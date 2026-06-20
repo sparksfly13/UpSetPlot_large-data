@@ -792,10 +792,10 @@ class UpSet:
                 }
             )
         )
-        styles["linewidth"].fillna(1, inplace=True)
-        styles["facecolor"].fillna(self._facecolor, inplace=True)
-        styles["edgecolor"].fillna(styles["facecolor"], inplace=True)
-        styles["linestyle"].fillna("solid", inplace=True)
+        styles["linewidth"] = styles["linewidth"].fillna(1)
+        styles["facecolor"] = styles["facecolor"].fillna(self._facecolor)
+        styles["edgecolor"] = styles["edgecolor"].fillna(styles["facecolor"])
+        styles["linestyle"] = styles["linestyle"].fillna("solid")
         del styles["hatch"]  # not supported in matrix (currently)
 
         x = np.repeat(np.arange(len(data)), n_cats)
@@ -901,7 +901,7 @@ class UpSet:
                 return (val / self.total,)
 
         if where == "right":
-            margin = 0.01 * abs(np.diff(ax.get_xlim()))
+            margin = 0.01 * abs(np.diff(ax.get_xlim())).item()
             for rect in rects:
                 width = rect.get_width() + rect.get_x()
                 ax.text(
@@ -912,7 +912,7 @@ class UpSet:
                     va="center",
                 )
         elif where == "left":
-            margin = 0.01 * abs(np.diff(ax.get_xlim()))
+            margin = 0.01 * abs(np.diff(ax.get_xlim())).item()
             for rect in rects:
                 width = rect.get_width() + rect.get_x()
                 ax.text(
@@ -923,7 +923,7 @@ class UpSet:
                     va="center",
                 )
         elif where == "top":
-            margin = 0.01 * abs(np.diff(ax.get_ylim()))
+            margin = 0.01 * abs(np.diff(ax.get_ylim())).item()
             for rect in rects:
                 height = rect.get_height() + rect.get_y()
                 ax.text(
