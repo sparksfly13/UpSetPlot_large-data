@@ -3,11 +3,16 @@
 Reads the boolean indicator CSV produced by generate_candy_data.py, lets
 upsetplot aggregate row counts per category combination, and writes a PNG.
 
+Colors are driven by a JSON palette of hexcodes keyed by name (see palette.json).
+Recognised keys: background, bars, empty_dots, shading, labels. Any key you omit
+falls back to the upsetplot / matplotlib default.
+
 Usage:
-    .venv/bin/python plot_candy_upset.py [--csv PATH] [--out PATH]
+    .venv/bin/python plot_candy_upset.py [--csv PATH] [--out PATH] [--palette PATH]
 """
 
 import argparse
+import json
 
 import matplotlib
 
@@ -21,11 +26,54 @@ from upsetplot import UpSet, from_indicators
 NON_CATEGORY_COLUMNS = ["Purchase reference"]
 
 
+def load_palette(path):
+    """Read a JSON palette mapping names to matplotlib colors (e.g. hexcodes).
+
+    Returns an empty dict (use built-in defaults) if the file is absent.
+    """
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Palette {path} not found; using default colors")
+        return {}
+
+
+def apply_palette(palette):
+    """Apply background/label colors via rcParams; return UpSet color kwargs.
+
+    Only keys present in the palette take effect; anything omitted falls back to
+    upsetplot / matplotlib defaults. rcParams must be set before the plot is
+    built, so call this before constructing/plotting the UpSet.
+    """
+    if "background" in palette:
+        matplotlib.rcParams["axes.facecolor"] = palette["background"]
+        matplotlib.rcParams["figure.facecolor"] = palette["background"]
+    if "labels" in palette:
+        for key in ("text.color", "axes.labelcolor", "xtick.color", "ytick.color"):
+            matplotlib.rcParams[key] = palette["labels"]
+
+    # facecolor drives both the bars and the active ("occupied") matrix dots.
+    kwargs = {}
+    if "bars" in palette:
+        kwargs["facecolor"] = palette["bars"]
+    if "empty_dots" in palette:
+        kwargs["other_dots_color"] = palette["empty_dots"]
+    if "shading" in palette:
+        kwargs["shading_color"] = palette["shading"]
+    return kwargs
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", default="candy_baskets.csv", help="input CSV path")
     parser.add_argument("--out", default="candy_upset.png", help="output PNG path")
+    parser.add_argument(
+        "--palette", default="palette.json", help="JSON color palette path"
+    )
     args = parser.parse_args()
+
+    color_kwargs = apply_palette(load_palette(args.palette))
 
     df = pd.read_csv(args.csv)
 
@@ -48,6 +96,7 @@ def main() -> None:
         subset_size="count",
         sort_by="cardinality",
         show_counts=True,
+        **color_kwargs,
     )
     upset.plot()
 
