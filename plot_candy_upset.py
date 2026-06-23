@@ -8,7 +8,7 @@ Recognised keys: background, bars, empty_dots, shading, labels, axis_lines,
 grid_lines. Any key you omit falls back to the upsetplot / matplotlib default.
 
 Usage:
-    .venv/bin/python plot_candy_upset.py [--csv PATH] [--out PATH] [--palette PATH]
+    .venv/bin/python plot_candy_upset.py [--csv PATH] [--out PATH] [--palette PATH] [--sep CHAR]
 """
 
 import argparse
@@ -77,11 +77,12 @@ def main() -> None:
     parser.add_argument(
         "--palette", default="palette.json", help="JSON color palette path"
     )
+    parser.add_argument("--sep", default=",", help="CSV field delimiter")
     args = parser.parse_args()
 
     color_kwargs = apply_palette(load_palette(args.palette))
 
-    df = pd.read_csv(args.csv)
+    df = pd.read_csv(args.csv, sep=args.sep)
 
     # Every column except the reference(s) is a category indicator.
     category_columns = [c for c in df.columns if c not in NON_CATEGORY_COLUMNS]
