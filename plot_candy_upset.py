@@ -4,8 +4,8 @@ Reads the boolean indicator CSV produced by generate_candy_data.py, lets
 upsetplot aggregate row counts per category combination, and writes a PNG.
 
 Colors are driven by a JSON palette of hexcodes keyed by name (see palette.json).
-Recognised keys: background, bars, empty_dots, shading, labels. Any key you omit
-falls back to the upsetplot / matplotlib default.
+Recognised keys: background, bars, empty_dots, shading, labels, axis_lines,
+grid_lines. Any key you omit falls back to the upsetplot / matplotlib default.
 
 Usage:
     .venv/bin/python plot_candy_upset.py [--csv PATH] [--out PATH] [--palette PATH]
@@ -52,6 +52,12 @@ def apply_palette(palette):
     if "labels" in palette:
         for key in ("text.color", "axes.labelcolor", "xtick.color", "ytick.color"):
             matplotlib.rcParams[key] = palette["labels"]
+    # axis_lines colors the spines (the box/frame and x-axis baseline).
+    if "axis_lines" in palette:
+        matplotlib.rcParams["axes.edgecolor"] = palette["axis_lines"]
+    # grid_lines colors the count-axis gridlines upsetplot draws on the bars.
+    if "grid_lines" in palette:
+        matplotlib.rcParams["grid.color"] = palette["grid_lines"]
 
     # facecolor drives both the bars and the active ("occupied") matrix dots.
     kwargs = {}

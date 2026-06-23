@@ -1,0 +1,9 @@
+{
+  "background": "#dfe1f4",
+  "bars": "#323569",
+  "empty_dots": "#9ca1eb",
+  "shading": "#b8bbec",
+  "labels": "#323569",
+  "axis_lines": "#9ca1eb",
+  "grid_lines": "#9ca1eb"
+}
