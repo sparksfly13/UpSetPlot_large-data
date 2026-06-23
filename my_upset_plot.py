@@ -9,6 +9,7 @@ grid_lines. Any key you omit falls back to the upsetplot / matplotlib default.
 
 Usage:
     .venv/bin/python plot_candy_upset.py [--csv PATH] [--out PATH] [--palette PATH]
+        [--sep CHAR] [--min-subset-size N]
 """
 
 import argparse
@@ -77,6 +78,12 @@ def main() -> None:
     parser.add_argument(
         "--palette", default="palette.json", help="JSON color palette path"
     )
+    parser.add_argument(
+        "--min-subset-size",
+        type=int,
+        default=None,
+        help="hide intersections with fewer than this many members",
+    )
     args = parser.parse_args()
 
     color_kwargs = apply_palette(load_palette(args.palette))
@@ -95,6 +102,11 @@ def main() -> None:
     # the counts, which are tallied by index.
     indexed = from_indicators(category_columns, data=df)
 
+    # Only pass min_subset_size when set, so the default keeps every intersection.
+    size_kwargs = {}
+    if args.min_subset_size is not None:
+        size_kwargs["min_subset_size"] = args.min_subset_size
+
     # subset_size='count' tallies the number of rows in each combination.
     upset = UpSet(
         indexed,
@@ -102,6 +114,7 @@ def main() -> None:
         subset_size="count",
         sort_by="cardinality",
         show_counts=True,
+        **size_kwargs,
         **color_kwargs,
     )
     upset.plot()
