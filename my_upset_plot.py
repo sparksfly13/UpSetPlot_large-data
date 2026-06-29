@@ -1,9 +1,11 @@
 """Plot a boolean-indicator CSV as an UpSet plot using subset_size='count'.
 
 Reads a CSV whose category columns hold 1/0 membership flags, lets upsetplot
-aggregate row counts per category combination, and writes a PNG. Columns that
-are not category indicators (e.g. an id) are listed in NON_CATEGORY_COLUMNS and
-carried along but ignored when tallying.
+aggregate row counts per category combination, and writes two complementary
+PNGs per run that partition all intersections at n (--min-subset-size, n > 1): a
+"_below<n>" plot (subsets smaller than n) and a "_min<n>" plot (subsets of at
+least n). Columns that are not category indicators (e.g. an id) are listed in
+NON_CATEGORY_COLUMNS and carried along but ignored when tallying.
 
 Colors are driven by a JSON palette of hexcodes keyed by name (see palette.json).
 Recognised keys: background, bars, empty_dots, shading, labels, axis_lines,
@@ -16,6 +18,7 @@ Usage:
 
 import argparse
 import json
+import os
 
 import matplotlib
 
@@ -73,10 +76,53 @@ def apply_palette(palette):
     return kwargs
 
 
+def suffixed(path, suffix):
+    """Insert _<suffix> before the file extension of path."""
+    root, ext = os.path.splitext(path)
+    return f"{root}_{suffix}{ext}"
+
+
+def render_upset(indexed, color_kwargs, size_kwargs, out_path, freq_xlim=None):
+    """Build one UpSet plot with the given size filter and save it to out_path.
+
+    size_kwargs is passed straight to UpSet, e.g. {"min_subset_size": 100} or
+    {"max_subset_size": 99}. If freq_xlim is given, the Frequency (intersection
+    size) axis is pinned to those limits instead of autoscaling. Returns the
+    Frequency-axis limits actually used, so a caller can share one plot's scale
+    with another.
+    """
+    upset = UpSet(
+        indexed,
+        orientation="vertical",
+        subset_size="count",
+        sort_by="cardinality",
+        sort_categories_by="input",  # keep CSV column order, not by total count
+        show_counts=True,
+        **size_kwargs,
+        **color_kwargs,
+    )
+    axes = upset.plot()
+    # Rename the intersection bar chart's default "Intersection size" label.
+    # In this vertical layout that label sits on the intersections x-axis.
+    axes["intersections"].set_xlabel("Frequency")
+    if freq_xlim is not None:
+        axes["intersections"].set_xlim(freq_xlim)
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    # Read limits after savefig so autoscaling has been finalized by the draw.
+    used_xlim = axes["intersections"].get_xlim()
+    plt.close("all")  # free the figure before rendering the next plot
+    print(f"Wrote {out_path}")
+    return used_xlim
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", default="data.csv", help="input CSV path")
-    parser.add_argument("--out", default="my_upset_plot.png", help="output PNG path")
+    parser.add_argument(
+        "--out",
+        default="my_upset_plot.png",
+        help="base output PNG path; written suffixed as _below<n> and _min<n>",
+    )
     parser.add_argument(
         "--palette", default="palette.json", help="JSON color palette path"
     )
@@ -84,8 +130,8 @@ def main() -> None:
     parser.add_argument(
         "--min-subset-size",
         type=int,
-        default=None,
-        help="hide intersections with fewer than this many members",
+        default=2,
+        help="min members for the filtered (_min<n>) plot; n > 1",
     )
     args = parser.parse_args()
 
@@ -105,29 +151,24 @@ def main() -> None:
     # the counts, which are tallied by index.
     indexed = from_indicators(category_columns, data=df)
 
-    # Only pass min_subset_size when set, so the default keeps every intersection.
-    size_kwargs = {}
-    if args.min_subset_size is not None:
-        size_kwargs["min_subset_size"] = args.min_subset_size
-
-    # subset_size='count' tallies the number of rows in each combination.
-    upset = UpSet(
-        indexed,
-        orientation="vertical",
-        subset_size="count",
-        sort_by="cardinality",
-        sort_categories_by="input",  # keep CSV column order, not by total count
-        show_counts=True,
-        **size_kwargs,
-        **color_kwargs,
+    # Render two complementary plots that partition all intersections at n:
+    #   _below<n>: subsets smaller than n   (max_subset_size = n - 1)
+    #   _min<n>:   subsets of at least n     (min_subset_size = n)
+    n = args.min_subset_size
+    if n <= 1:
+        print(f"--min-subset-size is {n}; the _below{n} plot will be empty")
+    # Render _min first, then reuse its Frequency-axis scale for _below so the
+    # two plots share an identical (comparable) horizontal scale.
+    freq_xlim = render_upset(
+        indexed, color_kwargs, {"min_subset_size": n}, suffixed(args.out, f"min{n}")
     )
-    axes = upset.plot()
-    # Rename the intersection bar chart's default "Intersection size" label.
-    # In this vertical layout that label sits on the intersections x-axis.
-    axes["intersections"].set_xlabel("Frequency")
-
-    plt.savefig(args.out, dpi=150, bbox_inches="tight")
-    print(f"Wrote {args.out}")
+    render_upset(
+        indexed,
+        color_kwargs,
+        {"max_subset_size": n - 1},
+        suffixed(args.out, f"below{n}"),
+        freq_xlim=freq_xlim,
+    )
 
 
 if __name__ == "__main__":
