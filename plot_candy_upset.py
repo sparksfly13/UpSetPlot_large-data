@@ -114,11 +114,15 @@ def main() -> None:
         orientation="vertical",
         subset_size="count",
         sort_by="cardinality",
+        sort_categories_by="input",  # keep CSV column order, not by total count
         show_counts=True,
         **size_kwargs,
         **color_kwargs,
     )
-    upset.plot()
+    axes = upset.plot()
+    # Rename the intersection bar chart's default "Intersection size" label.
+    # In this vertical layout that label sits on the intersections x-axis.
+    axes["intersections"].set_xlabel("Frequency")
 
     plt.savefig(args.out, dpi=150, bbox_inches="tight")
     print(f"Wrote {args.out}")

@@ -1,14 +1,16 @@
-"""Plot the candy-basket CSV as an UpSet plot using subset_size='count'.
+"""Plot a boolean-indicator CSV as an UpSet plot using subset_size='count'.
 
-Reads the boolean indicator CSV produced by generate_candy_data.py, lets
-upsetplot aggregate row counts per category combination, and writes a PNG.
+Reads a CSV whose category columns hold 1/0 membership flags, lets upsetplot
+aggregate row counts per category combination, and writes a PNG. Columns that
+are not category indicators (e.g. an id) are listed in NON_CATEGORY_COLUMNS and
+carried along but ignored when tallying.
 
 Colors are driven by a JSON palette of hexcodes keyed by name (see palette.json).
 Recognised keys: background, bars, empty_dots, shading, labels, axis_lines,
 grid_lines. Any key you omit falls back to the upsetplot / matplotlib default.
 
 Usage:
-    .venv/bin/python plot_candy_upset.py [--csv PATH] [--out PATH] [--palette PATH]
+    .venv/bin/python my_upset_plot.py [--csv PATH] [--out PATH] [--palette PATH]
         [--sep CHAR] [--min-subset-size N]
 """
 
@@ -73,11 +75,12 @@ def apply_palette(palette):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--csv", default="candy_baskets.csv", help="input CSV path")
-    parser.add_argument("--out", default="candy_upset.png", help="output PNG path")
+    parser.add_argument("--csv", default="data.csv", help="input CSV path")
+    parser.add_argument("--out", default="my_upset_plot.png", help="output PNG path")
     parser.add_argument(
         "--palette", default="palette.json", help="JSON color palette path"
     )
+    parser.add_argument("--sep", default=",", help="CSV field delimiter")
     parser.add_argument(
         "--min-subset-size",
         type=int,
@@ -88,7 +91,7 @@ def main() -> None:
 
     color_kwargs = apply_palette(load_palette(args.palette))
 
-    df = pd.read_csv(args.csv)
+    df = pd.read_csv(args.csv, sep=args.sep)
 
     # Every column except the reference(s) is a category indicator.
     category_columns = [c for c in df.columns if c not in NON_CATEGORY_COLUMNS]
@@ -113,11 +116,15 @@ def main() -> None:
         orientation="vertical",
         subset_size="count",
         sort_by="cardinality",
+        sort_categories_by="input",  # keep CSV column order, not by total count
         show_counts=True,
         **size_kwargs,
         **color_kwargs,
     )
-    upset.plot()
+    axes = upset.plot()
+    # Rename the intersection bar chart's default "Intersection size" label.
+    # In this vertical layout that label sits on the intersections x-axis.
+    axes["intersections"].set_xlabel("Frequency")
 
     plt.savefig(args.out, dpi=150, bbox_inches="tight")
     print(f"Wrote {args.out}")
