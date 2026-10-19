@@ -9,10 +9,12 @@ NON_CATEGORY_COLUMNS and carried along but ignored when tallying.
 
 Colors are driven by a JSON palette of hexcodes keyed by name (see palette.json).
 Recognised keys: background, bars, empty_dots, shading, labels, axis_lines,
-grid_lines, category_labels, category_label_size. category_labels is one color
-for all category names or an object mapping category name -> color (unlisted
-names keep the "labels" color); category_label_size is a font size in pt. Any
-key you omit falls back to the upsetplot / matplotlib default.
+grid_lines, category_labels, category_label_size, category_label_padding.
+category_labels is one color for all category names or an object mapping
+category name -> color (unlisted names keep the "labels" color);
+category_label_size is a font size in pt; category_label_padding is the gap in
+pt between the category labels and the totals bars above them. Any key you
+omit falls back to the upsetplot / matplotlib default.
 
 Usage:
     .venv/bin/python my_upset_plot.py [--csv PATH] [--out PATH] [--palette PATH]
@@ -85,6 +87,27 @@ def suffixed(path, suffix):
     return f"{root}_{suffix}{ext}"
 
 
+def set_label_padding(axes, padding):
+    """Move the totals bars to sit padding pt above the category labels.
+
+    upsetplot rounds the label area up to whole matrix cells (plus a spare one),
+    which can leave a large gap. This repositions the totals axes and trims the
+    top of the column shading to match; bbox_inches="tight" crops the space.
+    """
+    fig = axes["matrix"].figure
+    labels = axes["matrix"].xaxis.get_tightbbox(fig.canvas.get_renderer())
+    target = (labels.y1 + padding * fig.dpi / 72) / fig.bbox.height
+    totals = axes["totals"].get_position()
+    shift = target - totals.y0
+    axes["totals"].set_position(
+        [totals.x0, totals.y0 + shift, totals.width, totals.height]
+    )
+    shading = axes["shading"].get_position()
+    axes["shading"].set_position(
+        [shading.x0, shading.y0, shading.width, shading.height + shift]
+    )
+
+
 def render_upset(
     indexed,
     color_kwargs,
@@ -93,6 +116,7 @@ def render_upset(
     freq_xlim=None,
     label_colors=None,
     label_size=None,
+    label_padding=None,
 ):
     """Build one UpSet plot with the given size filter and save it to out_path.
 
@@ -100,8 +124,9 @@ def render_upset(
     {"max_subset_size": 99}. If freq_xlim is given, the Frequency (intersection
     size) axis is pinned to those limits instead of autoscaling. label_colors
     (one color, or a dict of category name -> color) and label_size (pt) style
-    the category name labels. Returns the Frequency-axis limits actually used,
-    so a caller can share one plot's scale with another.
+    the category name labels; label_padding (pt) sets the gap between them and
+    the totals bars. Returns the Frequency-axis limits actually used, so a
+    caller can share one plot's scale with another.
     """
     # Column width (element_size, pt) is fixed and does not follow the label
     # font, so widen columns for large labels to keep neighbours from touching.
@@ -144,6 +169,8 @@ def render_upset(
                 label.set_color(label_colors[label.get_text()])
     elif label_colors:
         axes["matrix"].tick_params(labelcolor=label_colors)
+    if label_padding is not None:
+        set_label_padding(axes, label_padding)
     # Rename the intersection bar chart's default "Intersection size" label.
     # In this vertical layout that label sits on the intersections x-axis.
     axes["intersections"].set_xlabel("Frequency")
@@ -177,11 +204,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # savefig does not create missing folders, so make the output folder first.
+    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+
     palette = load_palette(args.palette)
     color_kwargs = apply_palette(palette)
     label_kwargs = {
         "label_colors": palette.get("category_labels"),
         "label_size": palette.get("category_label_size"),
+        "label_padding": palette.get("category_label_padding"),
     }
 
     df = pd.read_csv(args.csv, sep=args.sep)
