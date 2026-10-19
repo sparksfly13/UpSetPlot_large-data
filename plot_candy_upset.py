@@ -8,7 +8,10 @@ complementary PNGs per run that partition all intersections at n
 
 Colors are driven by a JSON palette of hexcodes keyed by name (see palette.json).
 Recognised keys: background, bars, empty_dots, shading, labels, axis_lines,
-grid_lines. Any key you omit falls back to the upsetplot / matplotlib default.
+grid_lines, category_labels, category_label_size. category_labels is one color
+for all category names or an object mapping category name -> color (unlisted
+names keep the "labels" color); category_label_size is a font size in pt. Any
+key you omit falls back to the upsetplot / matplotlib default.
 
 Usage:
     .venv/bin/python plot_candy_upset.py [--csv PATH] [--out PATH] [--palette PATH]
@@ -81,15 +84,28 @@ def suffixed(path, suffix):
     return f"{root}_{suffix}{ext}"
 
 
-def render_upset(indexed, color_kwargs, size_kwargs, out_path, freq_xlim=None):
+def render_upset(
+    indexed,
+    color_kwargs,
+    size_kwargs,
+    out_path,
+    freq_xlim=None,
+    label_colors=None,
+    label_size=None,
+):
     """Build one UpSet plot with the given size filter and save it to out_path.
 
     size_kwargs is passed straight to UpSet, e.g. {"min_subset_size": 100} or
     {"max_subset_size": 99}. If freq_xlim is given, the Frequency (intersection
-    size) axis is pinned to those limits instead of autoscaling. Returns the
-    Frequency-axis limits actually used, so a caller can share one plot's scale
-    with another.
+    size) axis is pinned to those limits instead of autoscaling. label_colors
+    (one color, or a dict of category name -> color) and label_size (pt) style
+    the category name labels. Returns the Frequency-axis limits actually used,
+    so a caller can share one plot's scale with another.
     """
+    # Column width (element_size, pt) is fixed and does not follow the label
+    # font, so widen columns for large labels to keep neighbours from touching.
+    # 32 is upsetplot's default.
+    element_size = max(32, 2 * label_size) if label_size else 32
     upset = UpSet(
         indexed,
         orientation="vertical",
@@ -97,10 +113,36 @@ def render_upset(indexed, color_kwargs, size_kwargs, out_path, freq_xlim=None):
         sort_by="cardinality",
         sort_categories_by="input",  # keep CSV column order, not by total count
         show_counts=True,
+        element_size=element_size,
         **size_kwargs,
         **color_kwargs,
     )
-    axes = upset.plot()
+    # upsetplot reserves room for the category labels from xtick.labelsize at
+    # layout time, so the label size must be in effect while plotting. It
+    # measures in whole-figure units but the grid only fills the subplot
+    # fraction of the figure height, so inflate the layout size to compensate
+    # (otherwise long labels run into the totals bars).
+    rc = {}
+    if label_size:
+        fill = (
+            matplotlib.rcParams["figure.subplot.top"]
+            - matplotlib.rcParams["figure.subplot.bottom"]
+        )
+        rc["xtick.labelsize"] = label_size / fill
+    with matplotlib.rc_context(rc):
+        axes = upset.plot()
+    if label_size:
+        axes["matrix"].tick_params(labelsize=label_size)
+        # The Frequency axis also uses xtick.labelsize; restore its default.
+        axes["intersections"].tick_params(
+            axis="x", labelsize=matplotlib.rcParams["xtick.labelsize"]
+        )
+    if isinstance(label_colors, dict):
+        for label in axes["matrix"].get_xticklabels():
+            if label.get_text() in label_colors:
+                label.set_color(label_colors[label.get_text()])
+    elif label_colors:
+        axes["matrix"].tick_params(labelcolor=label_colors)
     # Rename the intersection bar chart's default "Intersection size" label.
     # In this vertical layout that label sits on the intersections x-axis.
     axes["intersections"].set_xlabel("Frequency")
@@ -134,7 +176,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    color_kwargs = apply_palette(load_palette(args.palette))
+    palette = load_palette(args.palette)
+    color_kwargs = apply_palette(palette)
+    label_kwargs = {
+        "label_colors": palette.get("category_labels"),
+        "label_size": palette.get("category_label_size"),
+    }
 
     df = pd.read_csv(args.csv, sep=args.sep)
 
@@ -159,7 +206,11 @@ def main() -> None:
     # Render _min first, then reuse its Frequency-axis scale for _below so the
     # two plots share an identical (comparable) horizontal scale.
     freq_xlim = render_upset(
-        indexed, color_kwargs, {"min_subset_size": n}, suffixed(args.out, f"min{n}")
+        indexed,
+        color_kwargs,
+        {"min_subset_size": n},
+        suffixed(args.out, f"min{n}"),
+        **label_kwargs,
     )
     render_upset(
         indexed,
@@ -167,6 +218,7 @@ def main() -> None:
         {"max_subset_size": n - 1},
         suffixed(args.out, f"below{n}"),
         freq_xlim=freq_xlim,
+        **label_kwargs,
     )
 
 
